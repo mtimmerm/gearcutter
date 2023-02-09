@@ -1,0 +1,21 @@
+{
+  "name": "gearcutter",
+  "version": "1.0.0",
+  "description": "A small web page to design and export gear shapes",
+  "main": "index.js",
+  "scripts": {
+    "prebuild": "prettier -w src",
+    "build": "copyfiles gearcutter.html out && esbuild src/app.ts --bundle --loader:.html=file --outfile=out/gearcutter.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Matt Timmermans",
+  "license": "CC-BY-4.0",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "esbuild": "0.16.12",
+    "copyfiles": "^2.4.1",
+    "prettier": "^2.8.4",
+    "typescript": "^4.9.4"
+  }
+}

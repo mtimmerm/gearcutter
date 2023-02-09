@@ -1,0 +1,220 @@
+<HTML>
+<!-- This work is licensed under the Creative Commons Attribution 4.0 International License.
+     To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/ or send
+     a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA -->
+<HEAD>
+    <title>Gear Cutter</title>
+    <meta name="copyright" content="Matthew David Timmermans">
+    <style>
+        body {
+            font-family: sans-serif;
+            font-size: 16px;
+        }
+        h1 {
+            padding-left: 32px;
+            border-bottom: 3px solid black;
+        }
+        h2 {
+            margin: 32px 0 16px;
+            border-bottom: solid 2px #A0A0A1;
+            padding-left: 32px;            
+        }
+        h3 {
+            margin: 0 0 16px;
+        }
+        .text {
+            padding: 0 32px;
+        }
+        .subh2 {
+            margin: -8px 0 8px 32px;
+            font-size: 12px;            
+        }
+        .sepcol {
+            padding-left: 32px;
+        }
+        table {
+            padding: 0 32px;
+            font-size: 16px;
+            border-spacing: 0px;
+        }
+        .ctrl {
+            padding: 3px 0;
+            text-align: right;
+        }
+        .ctrlsep {
+            padding: 3px 0 3px 32px;
+            text-align: right;
+        }
+        .ctrlspan {
+            padding: 3px 0;
+        }
+
+        .numin {
+            width: 48px;
+            font-size: 14px;
+            margin-right: 6px;
+        }
+        .checkin {
+            width: 20px;
+            height: 20px;            
+        }
+        .button {
+            font-size: 16px;
+        }
+        .dropdown {
+            font-size: 14px;
+            padding: 1px 0 2px;
+            vertical-align: baseline;
+        }
+
+        .license {
+            border-top: solid 1px #c0c0c0;
+            margin: 16px 0 0;
+            border-top: solid 1px #c0c0c0;
+            overflow: hidden;
+            min-height: 32px;
+            font-size: 12px;
+            padding: 16px 0 0 32px;            
+        }
+    </style>
+</HEAD>
+
+<BODY>
+    <h1>Gear Cutter</h1>
+    <form>
+        <table>
+            <tr>
+                <td class="ctrl"><input class="numin" id="pa" /></td>
+                <td class="label">
+                    Pressure Angle (degrees)
+                </td>
+                <td class="ctrlsep"><input class="numin" id="cr" /></td>
+                <td class="label">
+                    Contact Ratio Limit
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrl"><input class="numin" id="gt" /></td>
+                <td class="label">
+                    Gear Teeth
+                </td>
+                <td class="ctrlsep"><input type="checkbox" class="checkin"  id="isinternal" /></td>
+                <td class="label">
+                    Internal gear
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrl"><input class="numin" id="pt" /></td>
+                <td class="label">
+                    Pinion Teeth
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrl"><input class="numin" id="ps" /></td>
+                <td class="label">
+                    Profile Shift (% Module)
+                </td>
+                <td class="ctrlsep"><input class="numin" id="bp" /></td>
+                <td class="label">
+                    Width Balance % (0-100)
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrl"><input class="numin" id="clr" /></td>
+                <td class="label">
+                    Clearance (% Module)
+                </td>
+                <td class="ctrlsep"><input class="numin" id="bkl" /></td>
+                <td class="label">
+                    Backlash (% Module)
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrl"><input class="numin" id="ft" /></td>
+                <td class="label">
+                    Face Tol. (% Module)
+                </td>
+                <td class="ctrlsep"><input class="numin" id="fit" /></td>
+                <td class="label">
+                    Fillet Tol. (% Module)
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrlspan" colspan="4">
+                    <input class="numin" id="sz"/>Size of
+                    <select class="dropdown" id="meas">
+                        <option value="mod">Module</option>
+                        <option value="dp">Diametrical Pitch</option>
+                        <option value="cd">Center Distance</option>
+                    </select>
+                    in
+                    <select class="dropdown" id="unit">
+                        <option value="px">px</option>
+                        <option value="mm">mm (96 px/25.4)</option>
+                        <option value="in">in (96 px)</option>
+                        <option value="ptmm">mm (72 px/25.4)</option>
+                        <option value="ptin">in (72 px)</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td class="ctrlspan" colspan="4">
+                    <input type="submit" id="submit" class="button" value="Submit">
+                </td>
+            </tr>
+        </table>
+    </form>
+    <canvas width="800" height="400" id="canvas"></canvas>
+    <h2>SVG Export</h2>
+    <div class="subh2">
+        Click to download
+    </div>
+    <table>
+        <tr>
+            <td id="svgTitle1">Pinion</td>
+            <td id="svgTitle2">Gear</td>
+        </tr>
+        <tr>
+            <td><a class="downloadLink" id="link1"><img width="300" id="img1"></img></a></td>
+            <td><a class="downloadLink" id="link2"><img width="300" id="img2"></img></a></td>
+        </tr>
+    </table>
+    <h2>About</h2>
+    <div class="text">
+        This program uses a unique method to generate SVG gear shapes that you can import into a CAD program for
+        cutting gears with CNC.
+        <ol>
+            <li>The gear parameters are used to create the shape of a rack;</li>
+            <li>The curve that each line or corner of the rack would cut into the gear, as they move together,
+                is determined exactly, to the limits of floating point precision;</li>
+            <li>The shape of the gear is determined to be the lower envelope, in polar coordinates from the
+                gear center, of all these cuts.  This is again determined exactly to the limits of floating point
+                precision; Then, finally</li>
+            <li>Each curve in the gear shape is approximated with circular arcs, to the required tolerance.
+                Circular arcs are used, because they are directly supported by all CNC machines, and will not need
+                to be approximated again.  Separate tolerance values are specified for the tooth faces
+                (critically important) and the fillets (not so important when clearance is used).
+            </li>
+        </ol>
+    </div>
+    <h2>Limitations</h2>
+    <div class="text">
+        <h3>Undercuts</h3>
+        <p>
+            Because the gear shape is a polar function, the ability to model undercutting is limited.  When the fillet
+            undercuts to tooth, it takes everything further away on the same radius with it.
+        </p><p>
+            Useful involute pinions with as few as <a href="#cr=1.5&gt=30&pt=6&ps=40">6 teeth</a> are possible with
+            aggressive profile shifting, however, so undercutting can exceeds this limitation usually be avoided.
+        </p>
+    </div>
+    <div class="license">
+        <a style="float: left; margin-right: 16px" rel="license" href="http://creativecommons.org/licenses/by/4.0/">
+            <img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" />
+        </a>
+        Copyright &#xA9; 2022 Matthew David Timmermans<br>
+        This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
+    </div>
+    <script src="./gearcutter.js"></script>
+</BODY>
+</HTML>
