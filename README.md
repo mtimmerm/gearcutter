@@ -13,3 +13,4 @@ cutting gears with CNC.
     to be approximated again.  Separate tolerance values are specified for the tooth faces
     (critically important) and the fillets (not so important when clearance is used).
 
+You can use it online here: https://mtimmerm.github.io/webStuff/gearcutter.html
