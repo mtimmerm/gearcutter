@@ -240,6 +240,7 @@ function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: numbe
     {
       stroke: 'blue',
       strokeWidth: 0.01,
+      fill: 'none',
     },
     0,
     0,
@@ -249,6 +250,7 @@ function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: numbe
     {
       stroke: 'black',
       strokeWidth: 0.01,
+      fill: 'none',
     },
     (pen, domove) => {
       for (let i = 0; i < nTeeth; ++i) {

@@ -184,7 +184,7 @@ class SvgPen implements Pen {
           this.maxx = Math.max(this.maxx, cx + r);
         }
       }
-      this.buf.push(`A ${r} ${r} ${0} ${0} ${side} ${x} ${y}`);
+      this.buf.push(` A ${r} ${r} ${0} ${0} ${side} ${x} ${y}`);
     }
     this.lastx = x;
     this.lasty = y;

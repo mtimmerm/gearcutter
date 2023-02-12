@@ -10,8 +10,7 @@
   },
   "author": "Matt Timmermans",
   "license": "CC-BY-4.0",
-  "dependencies": {
-  },
+  "dependencies": {},
   "devDependencies": {
     "esbuild": "0.16.12",
     "copyfiles": "^2.4.1",
