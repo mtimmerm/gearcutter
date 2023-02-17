@@ -10,8 +10,10 @@ import { GearCutter } from './GearCutter';
 import { makeRack, RackProps } from './rack';
 import { RecordingPen } from './RecordingPen';
 import { SvgRecorder } from './svg';
-import { Pen, PathFunc } from './types';
+import { DxfRecorder } from './dxf';
+import { Pen, PathFunc, Unit } from './types';
 import { XFormPen } from './XFormPen';
+import { LastPointCapturePen } from './LastPointCapturePen';
 
 //slider values
 const DEFAULT_CLEARANCE_PERCENT = 15;
@@ -41,9 +43,9 @@ const DEFAULT_SIZE_UNIT = 'mm';
 const DEFAULT_SIZE_MEASUREMENT = 'mod';
 let sizeNumber = DEFAULT_SIZE_NUMBER;
 let sizeMeasurement = DEFAULT_SIZE_MEASUREMENT;
-let sizeUnit = DEFAULT_SIZE_UNIT;
+let sizeUnit: Unit = DEFAULT_SIZE_UNIT;
 
-const SIZE_UNITS: Record<string, number> = {
+const SIZE_UNITS: { [unit in Unit]: number } = {
   px: 1,
   mm: 96 / 25.4,
   in: 96,
@@ -64,6 +66,7 @@ let pinionSvgUrl: string | null | undefined;
 let gearSvgUrl: string | null | undefined;
 let pinionSegsPerTooth: number = 0;
 let gearSegsPerTooth: number = 0;
+let tempObjectUrl: string | null | undefined;
 
 function update() {
   let params = new URLSearchParams((window.location.hash || '').substring(1));
@@ -107,7 +110,7 @@ function update() {
     sizeMeasurement = 'mod';
   }
   const szString: string = stringParam(params, sizeMeasurement, '');
-  sizeUnit = szString.match(/[a-zA-Z]+$/)?.[0] || '';
+  sizeUnit = (szString.match(/[a-zA-Z]+$/)?.[0] || '') as Unit;
   sizeNumber = Number(szString.substring(0, szString.length - sizeUnit.length));
   if (!isFinite(sizeNumber) || sizeNumber <= 0) {
     sizeNumber = DEFAULT_SIZE_NUMBER;
@@ -116,6 +119,7 @@ function update() {
     sizeUnit = 'mm';
   }
   const svgScale = (sizeNumber * SIZE_UNITS[sizeUnit]!) / szLen;
+  const dxfScale = sizeNumber / szLen;
 
   setNumber('pa', pressureAngle);
   setNumber('cr', contactRatio);
@@ -174,6 +178,8 @@ function update() {
   gearPath = gearRecorder.path;
   gearSegsPerTooth = gearRecorder.countSegments();
 
+  const paStr = String(Math.floor(pressureAngle));
+
   // Set pinion download links
   if (pinionSvgUrl) {
     URL.revokeObjectURL(pinionSvgUrl);
@@ -181,8 +187,11 @@ function update() {
   pinionSvgUrl = createSvgObjectUrl(svgScale, pinionPath, pinionRadius, pinionTeeth);
   (document.getElementById('img1') as HTMLImageElement).src = pinionSvgUrl;
   (document.getElementById('link1') as HTMLAnchorElement).href = pinionSvgUrl;
-  (document.getElementById('link1') as HTMLAnchorElement).download = `pinion${pinionTeeth}pa${pressureAngle}.svg`;
+  (document.getElementById('link1') as HTMLAnchorElement).download = `pinion${pinionTeeth}pa${paStr}.svg`;
   (document.getElementById('svgTitle1') as HTMLElement).innerText = `Pinion (${pinionSegsPerTooth} arcs/tooth)`;
+
+  (document.getElementById('pinionDxfButton') as HTMLButtonElement).onclick = () =>
+    downLoadDxf(`pinion${pinionTeeth}pa${paStr}.dxf`, sizeUnit, dxfScale, pinionPath!, pinionRadius, pinionTeeth);
 
   // Set gear download links
   if (gearSvgUrl) {
@@ -191,8 +200,11 @@ function update() {
   gearSvgUrl = createSvgObjectUrl(svgScale, gearPath, gearRadius, gearTeeth);
   (document.getElementById('img2') as HTMLImageElement).src = gearSvgUrl;
   (document.getElementById('link2') as HTMLAnchorElement).href = gearSvgUrl;
-  (document.getElementById('link2') as HTMLAnchorElement).download = `gear${gearTeeth}pa${pressureAngle}.svg`;
+  (document.getElementById('link2') as HTMLAnchorElement).download = `gear${gearTeeth}pa${paStr}.svg`;
   (document.getElementById('svgTitle2') as HTMLElement).innerText = `Gear (${gearSegsPerTooth} arcs/tooth)`;
+
+  (document.getElementById('gearDxfButton') as HTMLButtonElement).onclick = () =>
+    downLoadDxf(`gear${gearTeeth}pa${paStr}.dxf`, sizeUnit, dxfScale, gearPath!, gearRadius, gearTeeth);
 }
 
 function submit() {
@@ -232,6 +244,17 @@ function submit() {
   }
 }
 
+function downLoadDxf(name: string, units: string, scale: number, path: PathFunc, radius: number, teeth: number) {
+  if (tempObjectUrl) {
+    URL.revokeObjectURL(tempObjectUrl);
+  }
+  tempObjectUrl = createDxfObject(sizeUnit, scale, path, radius, teeth);
+  const link = document.getElementById('hiddenLink') as HTMLAnchorElement;
+  link.href = tempObjectUrl;
+  link.download = name;
+  link.click();
+}
+
 function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: number, nTeeth: number) {
   const svg = new SvgRecorder({
     scale: -svgScale,
@@ -262,6 +285,41 @@ function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: numbe
     }
   );
   const blob = new Blob([svg.getSvgText()], { type: 'image/svg+xml' });
+  return URL.createObjectURL(blob);
+}
+
+function createDxfObject(units: string, scale: number, path: PathFunc, pitchRadius: number, nTeeth: number) {
+  const dxf = new DxfRecorder({
+    unit: sizeUnit,
+  });
+  dxf.drawCircle(
+    {
+      closed: true,
+    },
+    0,
+    0,
+    pitchRadius * scale
+  );
+  dxf.draw(
+    {
+      closed: true,
+    },
+    (pen, domove) => {
+      if (domove) {
+        const capture = new LastPointCapturePen();
+        const p = new XFormPen(capture);
+        p.rotate(((nTeeth - 1) * 360) / nTeeth).scale(scale);
+        path(p, true);
+        capture.transferMove(pen);
+      }
+      for (let i = 0; i < nTeeth; ++i) {
+        const p = new XFormPen(pen);
+        p.rotate((i * 360) / nTeeth).scale(scale);
+        path(p, false);
+      }
+    }
+  );
+  const blob = new Blob([dxf.getDxfText()], { type: 'image/svg+xml' });
   return URL.createObjectURL(blob);
 }
 

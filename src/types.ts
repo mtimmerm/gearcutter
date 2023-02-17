@@ -6,6 +6,8 @@
  * send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA
  */
 
+export type Unit = 'px' | 'mm' | 'in' | 'ptmm' | 'ptin';
+
 export type Point = [number, number];
 export type Span = [number, number];
 export type LineSeg = [number, number, number, number];

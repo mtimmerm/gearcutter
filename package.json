@@ -10,7 +10,10 @@
   },
   "author": "Matt Timmermans",
   "license": "CC-BY-4.0",
-  "dependencies": {},
+  "dependencies": {
+    "@types/uuid": "^9.0.0",
+    "uuid": "^9.0.0"
+  },
   "devDependencies": {
     "esbuild": "0.16.12",
     "copyfiles": "^2.4.1",
