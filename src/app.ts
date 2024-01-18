@@ -319,7 +319,7 @@ function createDxfObject(units: string, scale: number, path: PathFunc, pitchRadi
       }
     }
   );
-  const blob = new Blob([dxf.getDxfText()], { type: 'image/svg+xml' });
+  const blob = new Blob([dxf.getDxfText()], { type: 'image/vnd.dxf' });
   return URL.createObjectURL(blob);
 }
 
