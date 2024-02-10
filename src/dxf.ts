@@ -8,7 +8,6 @@
 
 import { PathFunc, Pen, Unit } from './types';
 import { DXF_TEMPLATE } from './dxfTemplate';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface DxfDrawProps {
   readonly closed: boolean;
