@@ -16,6 +16,7 @@ export interface DxfDrawProps {
 
 export interface DxfRecorderProps {
   unit: Unit;
+  marginFac: number;
 }
 
 const DXF_UNITS: { [unit in Unit]: number } = {
@@ -30,39 +31,45 @@ export class DxfRecorder {
   private readonly entitites: DxfEntity[];
   private readonly createDate: Date;
   private readonly unitNumber: number;
-  private nextHandle: number;
+  private minx: number;
+  private maxx: number;
+  private miny: number;
+  private maxy: number;
+  private marginFac: number;
 
   constructor(props: DxfRecorderProps) {
     this.entitites = [];
     this.createDate = new Date();
-    this.nextHandle = 0x40;
+    this.marginFac = props.marginFac;
     this.unitNumber = DXF_UNITS[props.unit] || DXF_UNITS.mm;
+    this.minx = this.miny = 0;
+    this.maxx = this.maxy = 0;
   }
 
   addEntity(entity: DxfEntity) {
     this.entitites.push(entity);
   }
 
-  allocHandle(): string {
-    const ret = this.nextHandle.toString(16).toUpperCase();
-    this.nextHandle++;
-    return ret;
+  includePoint(x: number, y: number) {
+    this.minx = Math.min(this.minx, x);
+    this.miny = Math.min(this.minx, y);
+    this.maxx = Math.max(this.maxx, x);
+    this.maxy = Math.max(this.maxx, y);
   }
 
   getDxfText(): string {
     const template: string[] = DXF_TEMPLATE.split('\n');
     const replacers: Replacers = {
-      '@@JULIANDATE': this.getJulianCreateDay(),
-      '@@NEXTHANDLE': this.nextHandle.toString(16).toUpperCase(),
       '@@ENTITIES': (dest) => {
         for (const e of this.entitites) {
           e.generate(dest);
         }
       },
+      '@@minx': String(this.minx * this.marginFac),
+      '@@miny': String(this.miny * this.marginFac),
+      '@@maxx': String(this.maxx * this.marginFac),
+      '@@maxy': String(this.maxy * this.marginFac),
       '@@UNITS': String(this.unitNumber),
-      '@@UUIDGEN': (dest) => {
-        dest.push(`{${uuidv4().toUpperCase()}}`);
-      },
     };
     const output: string[] = [];
     templateReplace(replacers, output, template);
@@ -70,13 +77,10 @@ export class DxfRecorder {
     return output.join('\n');
   }
 
-  private getJulianCreateDay(): string {
-    return String(this.createDate.getTime() / 86400000 + 2440587.5);
-  }
-
-  drawCircle(drawProps: DxfDrawProps, cx: number, cy: number, radius: number) {
+  drawCircle(_drawProps: DxfDrawProps, cx: number, cy: number, radius: number) {
+    this.includePoint(cx - radius, cy - radius);
+    this.includePoint(cx + radius, cy + radius);
     this.entitites.push(new DxfCircle(this, cx, cy, radius));
-    //this.drawing.drawCircle(cx, cy, radius);
   }
 
   draw(drawProps: DxfDrawProps, path: PathFunc) {
@@ -89,21 +93,18 @@ export class DxfRecorder {
 class DxfPen implements Pen {
   private readonly recorder: DxfRecorder;
   private readonly closePaths: boolean;
+  private openPath: DxfPolyLine | null;
   private havePoint = false;
-  private havePath = false;
-  private pendingProps: DxfDrawProps | null;
   private lastx = 0;
   private lasty = 0;
-  private firstx = 0;
-  private firsty = 0;
 
   constructor(recorder: DxfRecorder, drawProps: DxfDrawProps) {
     this.recorder = recorder;
-    this.pendingProps = drawProps;
     this.closePaths = !!drawProps.closed;
+    this.openPath = null;
   }
   moveTo(x: number, y: number): void {
-    if (this.havePath) {
+    if (this.openPath) {
       this.finish();
     }
     this.lastx = x;
@@ -114,38 +115,25 @@ class DxfPen implements Pen {
     if (!this.havePoint) {
       throw new Error('arcTo before moveTo in SVG with');
     }
-    if (this.pendingProps) {
-      // This is the first path
-      this.pendingProps = null;
+    if (!this.openPath) {
+      this.openPath = new DxfPolyLine(this.recorder, this.lastx, this.lasty);
+      this.recorder.addEntity(this.openPath);
+      this.recorder.includePoint(this.lastx, this.lasty);
     }
-    if (!this.havePath) {
-      this.havePath = true;
-      this.firstx = this.lastx;
-      this.firsty = this.lasty;
-    }
-    if (Math.abs(turn) < 1e-5) {
-      this.recorder.addEntity(new DxfLine(this.recorder, this.lastx, this.lasty, x, y));
-    } else {
-      const dx = x - this.lastx;
-      const dy = y - this.lasty;
-      const tana = Math.tan(turn * 0.5);
-      const midx = this.lastx + dx * 0.5 + dy * tana * 0.5;
-      const midy = this.lasty + dy * 0.5 - dx * tana * 0.5;
-      const cosa = Math.cos(turn * 0.5);
-      this.recorder.addEntity(new DxfQuadSpline(this.recorder, this.lastx, this.lasty, midx, midy, x, y, cosa));
-    }
+
+    this.recorder.includePoint(x, y);
+    const bulge = Math.abs(turn) < 1e-5 ? 0 : Math.tan(turn * 0.25);
+    this.openPath.addVertex(x, y, bulge);
     this.lastx = x;
     this.lasty = y;
   }
 
   finish() {
-    if (this.havePath) {
+    if (this.openPath) {
       if (this.closePaths) {
-        if (this.firstx !== this.lastx || this.firsty !== this.lasty) {
-          this.recorder.addEntity(new DxfLine(this.recorder, this.lastx, this.lasty, this.firstx, this.firsty));
-        }
+        this.openPath.close();
       }
-      this.havePath = false;
+      this.openPath = null;
     }
   }
 }
@@ -178,62 +166,101 @@ interface DxfEntity {
   generate(dest: string[]): void;
 }
 
-const LINE_TEMPLATE = `  0
-LINE
-  5
-@@handle
-330
-17
-100
-AcDbEntity
+const POLYLINE_START_TEMPLATE = `  0
+POLYLINE
   8
 0
-100
-AcDbLine
+ 66
+1
  10
-@@x0
+0.0
  20
-@@y0
+0.0
  30
 0.0
- 11
-@@x1
- 21
-@@y1
- 31
-0.0`
+ 70
+@@closedflag`
   .split('\n')
   .map((s) => s.replace('\r', ''));
 
-class DxfLine implements DxfEntity {
-  readonly replacers: Replacers;
+const POLYLINE_END_TEMPLATE = `  0
+SEQEND`
+  .split('\n')
+  .map((s) => s.replace('\r', ''));
 
-  constructor(recorder: DxfRecorder, x0: number, y0: number, x1: number, y1: number) {
+const POLYLINE_VERTEX_TEMPLATE = `  0
+VERTEX
+  8
+0
+ 10
+@@x
+ 20
+@@y
+ 30
+0.0
+ 42
+@@bulge`
+  .split('\n')
+  .map((s) => s.replace('\r', ''));
+
+class DxfPolyLine implements DxfEntity {
+  private readonly recorder: DxfRecorder;
+  private readonly replacers: Replacers;
+  private readonly vertexReplacers: Replacers;
+  private readonly vertexTriplets: number[];
+  isClosed: boolean;
+
+  constructor(recorder: DxfRecorder, startx: number, starty: number) {
+    this.recorder = recorder;
     this.replacers = {
-      '@@x0': String(x0),
-      '@@y0': String(y0),
-      '@@x1': String(x1),
-      '@@y1': String(y1),
-      '@@handle': recorder.allocHandle(),
+      '@@closedflag': '0',
     };
+    this.vertexReplacers = {
+      '@@x': '0.0',
+      '@@y': '0.0',
+      '@@bulge': '0.0',
+      '@@handle': '0',
+    };
+    this.vertexTriplets = [startx, starty, 0];
+    this.isClosed = false;
   }
   generate(dest: string[]): void {
-    templateReplace(this.replacers, dest, LINE_TEMPLATE);
+    if (this.vertexTriplets.length < 6) {
+      return;
+    }
+    if (this.isClosed) {
+      this.replacers['@@closedflag'] = '1';
+    }
+    templateReplace(this.replacers, dest, POLYLINE_START_TEMPLATE);
+    const vr = this.vertexReplacers;
+    const vt = this.vertexTriplets;
+    for (let i = 2; i < vt.length; i += 3) {
+      vr['@@x'] = String(vt[i - 2]);
+      vr['@@y'] = String(vt[i - 1]);
+      vr['@@bulge'] = String(vt[i]);
+      templateReplace(vr, dest, POLYLINE_VERTEX_TEMPLATE);
+    }
+    templateReplace(this.replacers, dest, POLYLINE_END_TEMPLATE);
+  }
+  addVertex(x: number, y: number, preBulge: number): void {
+    this.vertexTriplets[this.vertexTriplets.length - 1] = preBulge;
+    this.vertexTriplets.push(x, y, 0);
+  }
+  close() {
+    this.isClosed = true;
+    const vt = this.vertexTriplets;
+    const lasti = vt.length - 3;
+    if (lasti > 0 && vt[0] === vt[lasti] && vt[1] === vt[lasti + 1]) {
+      // the last vertex is redundant
+      vt.length = lasti;
+    }
   }
 }
 
 const CIRCLE_TEMPLATE = `  0
 CIRCLE
-  5
-@@handle
-330
-17
-100
-AcDbEntity
   8
 0
-100
-AcDbCircle
  10
 @@x0
  20
@@ -246,107 +273,16 @@ AcDbCircle
   .map((s) => s.replace('\r', ''));
 
 class DxfCircle implements DxfEntity {
-  readonly replacers: Replacers;
+  private readonly replacers: Replacers;
 
   constructor(recorder: DxfRecorder, x0: number, y0: number, r: number) {
     this.replacers = {
       '@@x0': String(x0),
       '@@y0': String(y0),
       '@@r': String(r),
-      '@@handle': recorder.allocHandle(),
     };
   }
   generate(dest: string[]): void {
     templateReplace(this.replacers, dest, CIRCLE_TEMPLATE);
-  }
-}
-
-const QUAD_SPLINE_TEMPLATE = `  0
-SPLINE
-  5
-@@handle
-330
-17
-100
-AcDbEntity
-  8
-0
-100
-AcDbSpline
- 70
-4
- 71
-2
- 72
-6
- 73
-3
- 74
-0
- 40
-0
- 40
-0
- 40
-0
- 40
-1
- 40
-1
- 40
-1
- 41
-1.0
- 41
-@@w
- 41
-1.0
- 10
-@@x0
- 20
-@@y0
- 30
-0.0
- 10
-@@x1
- 20
-@@y1
- 30
-0.0
- 10
-@@x2
- 20
-@@y2
- 30
-0.0`
-  .split('\n')
-  .map((s) => s.replace('\r', ''));
-
-class DxfQuadSpline implements DxfEntity {
-  readonly replacers: Replacers;
-
-  constructor(
-    recorder: DxfRecorder,
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number,
-    w: number
-  ) {
-    this.replacers = {
-      '@@x0': String(x0),
-      '@@y0': String(y0),
-      '@@x1': String(x1),
-      '@@y1': String(y1),
-      '@@x2': String(x2),
-      '@@y2': String(y2),
-      '@@w': String(w),
-      '@@handle': recorder.allocHandle(),
-    };
-  }
-  generate(dest: string[]): void {
-    templateReplace(this.replacers, dest, QUAD_SPLINE_TEMPLATE);
   }
 }

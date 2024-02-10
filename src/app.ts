@@ -291,6 +291,7 @@ function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: numbe
 function createDxfObject(units: string, scale: number, path: PathFunc, pitchRadius: number, nTeeth: number) {
   const dxf = new DxfRecorder({
     unit: sizeUnit,
+    marginFac: 1.1,
   });
   dxf.drawCircle(
     {
