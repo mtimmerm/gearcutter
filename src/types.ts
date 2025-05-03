@@ -33,6 +33,12 @@ export interface Pen {
    *      turns the positive X axis toward the positive Y axis
    */
   arcTo(x: number, y: number, turn: number): void;
+  /**
+   * Clear all the moves and arcs that have been sent to the pen so far.
+   *
+   * THIS IS NOT SUPPORTED IN ALL IMPLEMENTATIONS
+   */
+  reset?(): void;
 }
 
 /**

@@ -12,8 +12,9 @@ import { RecordingPen } from './RecordingPen';
 import { SvgRecorder } from './svg';
 import { DxfRecorder } from './dxf';
 import { Pen, PathFunc, Unit } from './types';
-import { XFormPen } from './XFormPen';
+import { XForm } from './XFormPen';
 import { LastPointCapturePen } from './LastPointCapturePen';
+import { applyInternalToothFillet, applyMaxToothFillet } from './InitialMaxFilletPen';
 
 //slider values
 const DEFAULT_CLEARANCE_PERCENT = 15;
@@ -34,6 +35,8 @@ const DEFAULT_PINION_TEETH = 16;
 let pinionTeeth = DEFAULT_PINION_TEETH;
 const DEFAULT_IS_INTERNAL = false;
 let isInternal = DEFAULT_IS_INTERNAL;
+const DEFAULT_MAX_FILLET = false;
+let maxFillet = DEFAULT_MAX_FILLET;
 const DEFAULT_FACE_TOL = 0.05;
 let faceTolPercent = DEFAULT_FACE_TOL;
 const DEFAULT_FILLET_TOL = 0.5;
@@ -78,6 +81,7 @@ function update() {
   profileShift = numberParam(params, 'ps', -100, 100, DEFAULT_PROFILE_SHIFT_PERCENT);
   pinionTeeth = numberParam(params, 'pt', 4, 200, DEFAULT_PINION_TEETH);
   gearTeeth = numberParam(params, 'gt', -300, 300, DEFAULT_GEAR_TEETH);
+  maxFillet = stringParam(params, 'f', '') === 'mx';
   isInternal = false;
   if (gearTeeth < 0) {
     gearTeeth = -gearTeeth;
@@ -125,6 +129,7 @@ function update() {
   setNumber('cr', contactRatio);
   setNumber('gt', gearTeeth);
   setCheck('isinternal', isInternal);
+  setCheck('maxfillet', maxFillet);
   setNumber('pt', pinionTeeth);
   setNumber('ps', profileShift);
   setNumber('bp', balancePercent);
@@ -165,17 +170,31 @@ function update() {
   const filletT = filletTolPercent / (100 * Math.PI);
 
   const pinionCutter = new GearCutter(pinionTeeth, pinionRadius, faceT, filletT);
-  pinionRack(new XFormPen(pinionCutter).rotate(-90).translate(0, pinionRadius), true);
+  new XForm().rotate(-90).translate(0, pinionRadius).processPath(pinionCutter, pinionRack, true);
   const pinionRecorder = new RecordingPen();
   pinionCutter.drawToothPath(pinionRecorder, true);
+  // In recorded tooth path:
+  // - the gear center is (0,0),
+  // - the tooth is to the right, centered on the + x axis
+  // - it is drawn from the -y to +y direction
   pinionPath = pinionRecorder.path;
+  if (maxFillet) {
+    pinionPath = applyMaxToothFillet(pinionPath);
+    pinionRecorder.reset();
+    pinionPath(pinionRecorder, true);
+  }
   pinionSegsPerTooth = pinionRecorder.countSegments();
 
   const gearCutter = new GearCutter(gearTeeth, gearRadius, faceT, filletT);
-  gearRack(new XFormPen(gearCutter).rotate(-90).translate(0, gearRadius), true);
+  new XForm().rotate(-90).translate(0, gearRadius).processPath(gearCutter, gearRack, true);
   const gearRecorder = new RecordingPen();
   gearCutter.drawToothPath(gearRecorder, true);
   gearPath = gearRecorder.path;
+  if (maxFillet) {
+    gearPath = isInternal ? applyInternalToothFillet(gearPath) : applyMaxToothFillet(gearPath);
+    gearRecorder.reset();
+    gearPath(gearRecorder, true);
+  }
   gearSegsPerTooth = gearRecorder.countSegments();
 
   const paStr = String(Math.floor(pressureAngle));
@@ -230,6 +249,9 @@ function submit() {
       parts.push(id + '=' + val);
     }
   }
+  if ((document.getElementById('maxfillet') as HTMLInputElement).checked) {
+    parts.push('f=mx');
+  }
   const sz = Number((document.getElementById('sz') as HTMLInputElement).value) || DEFAULT_SIZE_NUMBER;
   const meas = (document.getElementById('meas') as HTMLInputElement).value;
   const unit = (document.getElementById('unit') as HTMLInputElement).value;
@@ -277,9 +299,7 @@ function createSvgObjectUrl(svgScale: number, path: PathFunc, pitchRadius: numbe
     },
     (pen, domove) => {
       for (let i = 0; i < nTeeth; ++i) {
-        const p = new XFormPen(pen);
-        p.rotate((i * 360) / nTeeth);
-        path(p, domove);
+        new XForm().rotate((i * 360) / nTeeth).processPath(pen, path, domove);
         domove = false;
       }
     }
@@ -308,15 +328,17 @@ function createDxfObject(units: string, scale: number, path: PathFunc, pitchRadi
     (pen, domove) => {
       if (domove) {
         const capture = new LastPointCapturePen();
-        const p = new XFormPen(capture);
-        p.rotate(((nTeeth - 1) * 360) / nTeeth).scale(scale);
-        path(p, true);
+        new XForm()
+          .rotate(((nTeeth - 1) * 360) / nTeeth)
+          .scale(scale)
+          .processPath(capture, path, true);
         capture.transferMove(pen);
       }
       for (let i = 0; i < nTeeth; ++i) {
-        const p = new XFormPen(pen);
-        p.rotate((i * 360) / nTeeth).scale(scale);
-        path(p, false);
+        new XForm()
+          .rotate((i * 360) / nTeeth)
+          .scale(scale)
+          .processPath(pen, path, false);
       }
     }
   );
@@ -368,10 +390,9 @@ function drawRack(pen: Pen, rack: PathFunc, shift: number, mint: number, maxt: n
   mint -= shift;
   maxt -= shift;
   let start = Math.floor(mint + 0.5);
-  const xpen = new XFormPen(pen);
-  rack(xpen.copy().translate(start + shift, 0), true);
+  new XForm().translate(start + shift, 0).processPath(pen, rack, true);
   for (let t = start + 1; t < maxt + 0.9; t++) {
-    rack(xpen.copy().translate(t + shift, 0), false);
+    new XForm().translate(t + shift, 0).processPath(pen, rack, false);
   }
 }
 
@@ -386,62 +407,63 @@ function animationFrame() {
   ctx.save();
   ctx.clearRect(0, 0, cwid, chei);
   let scale = cwid / 3;
-  const pen = new XFormPen(new CanvasPen(ctx)).translate(cwid / 2, chei / 2).scale(scale, true);
+  const xform = new XForm().translate(cwid / 2, chei / 2).scale(scale, true);
+  const canvasPen = new CanvasPen(ctx);
   let shift = Date.now() - animationStartTime;
   shift /= 4000;
   shift -= Math.floor(shift);
   ctx.beginPath();
   ctx.strokeStyle = '#A0A0A0';
-  drawRack(pen, stdRack, shift, -1.5, 1.5);
+  drawRack(xform.apply(canvasPen), stdRack, shift, -1.5, 1.5);
   ctx.stroke();
   ctx.strokeStyle = '#000000';
   const bkwAdjust = backlashPercent / (400 * Math.PI);
   if (pinionPath) {
     ctx.beginPath();
-    const p = pen
-      .copy()
+    const xf = new XForm()
+      .xformInput(xform)
       .translate(0, -pinionRadius)
       .rotate(90 - 360 / pinionTeeth);
-    p.rotate(((shift + bkwAdjust) * -360) / pinionTeeth);
-    pinionPath(p, true);
-    p.rotate(360 / pinionTeeth);
-    pinionPath(p, true);
-    p.rotate(360 / pinionTeeth);
-    pinionPath(p, true);
-    p.rotate(360 / pinionTeeth);
-    pinionPath(p, true);
-    p.rotate(360 / pinionTeeth);
-    pinionPath(p, true);
+    xf.rotate(((shift + bkwAdjust) * -360) / pinionTeeth);
+    xf.processPath(canvasPen, pinionPath, true);
+    xf.rotate(360 / pinionTeeth);
+    xf.processPath(canvasPen, pinionPath, true);
+    xf.rotate(360 / pinionTeeth);
+    xf.processPath(canvasPen, pinionPath, true);
+    xf.rotate(360 / pinionTeeth);
+    xf.processPath(canvasPen, pinionPath, true);
+    xf.rotate(360 / pinionTeeth);
+    xf.processPath(canvasPen, pinionPath, true);
     ctx.stroke();
   }
   if (gearPath) {
     ctx.beginPath();
-    let p: XFormPen;
+    let xf: XForm;
     let sh = shift;
     if (isInternal) {
-      p = pen
-        .copy()
+      xf = new XForm()
+        .xformInput(xform)
         .translate(0, -gearRadius)
         .rotate(90 - 360 / gearTeeth);
     } else {
-      p = pen
-        .copy()
+      xf = new XForm()
+        .xformInput(xform)
         .translate(0, gearRadius)
         .scale(1, true)
         .rotate(90 - 360 / gearTeeth);
       sh += -0.5;
       sh -= Math.floor(sh);
     }
-    p.rotate(((sh - bkwAdjust) * -360) / gearTeeth);
-    gearPath(p, true);
-    p.rotate(360 / gearTeeth);
-    gearPath(p, true);
-    p.rotate(360 / gearTeeth);
-    gearPath(p, true);
-    p.rotate(360 / gearTeeth);
-    gearPath(p, true);
-    p.rotate(360 / gearTeeth);
-    gearPath(p, true);
+    xf.rotate(((sh - bkwAdjust) * -360) / gearTeeth);
+    xf.processPath(canvasPen, gearPath, true);
+    xf.rotate(360 / gearTeeth);
+    xf.processPath(canvasPen, gearPath, true);
+    xf.rotate(360 / gearTeeth);
+    xf.processPath(canvasPen, gearPath, true);
+    xf.rotate(360 / gearTeeth);
+    xf.processPath(canvasPen, gearPath, true);
+    xf.rotate(360 / gearTeeth);
+    xf.processPath(canvasPen, gearPath, true);
     ctx.stroke();
   }
   ctx.restore();

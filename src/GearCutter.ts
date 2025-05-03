@@ -10,7 +10,7 @@ import { CircleCut } from './CircleCut';
 import { ConstantRadiusCut } from './ConstantRadiusCut';
 import { normalizePolarCutPath } from './pathSampling';
 import { CutCurve, PolarCutSegment, Pen, PolarPathSample } from './types';
-import { XFormPen } from './XFormPen';
+import { XForm } from './XFormPen';
 
 /**
  * A [[Pen]] implementation that cuts a path into a gear.
@@ -57,7 +57,7 @@ export class GearCutter implements Pen {
     const segments = normalizePolarCutPath(this.path, this.dadTooth);
     for (const seg of segments) {
       const [sa, ea, c, rot] = seg;
-      const xpen = new XFormPen(pen).rotate((rot * 360) / this.nTeeth);
+      const xpen = new XForm().rotate((rot * 360) / this.nTeeth).apply(pen);
       c.drawSegment(xpen, (sa - rot) * this.dadTooth, (ea - rot) * this.dadTooth, doInitialMove);
       doInitialMove = false;
     }

@@ -6,8 +6,9 @@
  * send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA
  */
 
+import { centerDistanceFactor, radiusFromDistance } from './arcUtils';
 import { PathFunc, Pen } from './types';
-import { XFormPen } from './XFormPen';
+import { XForm } from './XFormPen';
 
 export interface SvgDrawProps {
   readonly fill?: string | undefined;
@@ -72,8 +73,7 @@ export class SvgRecorder {
       },
       this.buf
     );
-    const xfpen = new XFormPen(pen);
-    xfpen.scale(Math.abs(this.scale), this.scale < 0);
+    const xfpen = new XForm().scale(Math.abs(this.scale), this.scale < 0).apply(pen);
     path(xfpen, true);
     this.mergeBounds(pen.finish());
   }
@@ -164,10 +164,8 @@ class SvgPen implements Pen {
       const dx = x - this.lastx;
       const dy = y - this.lasty;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const a = Math.abs(turn * 0.5);
-      const sina = Math.sin(a);
-      const r = (dist * 0.5) / sina;
-      const tanfac = (turn >= 0 ? 0.5 : -0.5) / Math.tan(a);
+      const r = Math.abs(radiusFromDistance(dist, turn));
+      const tanfac = centerDistanceFactor(turn);
       const cx = x - dx * 0.5 - dy * tanfac;
       const cy = y - dy * 0.5 + dx * tanfac;
       if (cx > Math.min(this.lastx, x) && cx < Math.max(this.lastx, x)) {
